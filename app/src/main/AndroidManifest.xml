@@ -26,9 +26,9 @@
         <!-- SplashActivity：启动入口 -->
         <activity
             android:name=".SplashActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullSensor"
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -40,9 +40,9 @@
         <!-- MainActivity：由 SplashActivity 跳转启动 -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullSensor"
             android:windowLayoutInDisplayCutoutMode="shortEdges"
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
