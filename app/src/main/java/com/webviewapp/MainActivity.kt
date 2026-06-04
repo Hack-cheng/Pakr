@@ -593,22 +593,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchThemeColor(view: WebView) {
-        val js = """
-            (function() {
-                var m = document.querySelector('meta[name="theme-color"]');
-                if (m && m.content) { ThemeBridge.onThemeColor(m.content); return; }
-                var el = document.elementFromPoint(window.innerWidth/2, 1);
-                if (el) {
-                    var bg = getComputedStyle(el).backgroundColor;
-                    var r = bg.match(/rgba?\((\d+),(\d+),(\d+)/);
-                    if (r) ThemeBridge.onThemeColor(
-                        '#' + [r[1],r[2],r[3]].map(function(x){
-                            return ('0' + parseInt(x).toString(16)).slice(-2);
-                        }).join('')
-                    );
-                }
-            })();
-        """.trimIndent()
+        val js = "(function(){" +
+            "try{" +
+            "var m=document.querySelector('meta[name=\"theme-color\"]');" +
+            "if(m&&m.content){ThemeBridge.onThemeColor(m.content);return;}" +
+            "var el=document.elementFromPoint(window.innerWidth/2,1);" +
+            "if(el){" +
+            "var bg=getComputedStyle(el).backgroundColor;" +
+            "var r=bg.match(/rgba?\\((\\d+),(\\d+),(\\d+)/);" +
+            "if(r)ThemeBridge.onThemeColor(" +
+            "'#'+[r[1],r[2],r[3]].map(function(x){" +
+            "return('0'+parseInt(x,10).toString(16)).slice(-2);" +
+            "}).join(''));" +
+            "}" +
+            "}catch(e){}" +
+            "})();"
         view.evaluateJavascript(js, null)
     }
 
@@ -664,8 +663,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() { super.onPause(); CookieManager.getInstance().flush() }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); webView.destroy(); super.onDestroy() }
-
-    private var fileChooserCallbackRef: ValueCallback<Array<Uri>>? = null
 
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
@@ -851,18 +848,6 @@ class MainActivity : AppCompatActivity() {
             perms.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         return perms.toTypedArray()
-    }
-
-    private fun createImageFile(): File {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val storageDir = File(cacheDir, "webview_uploads").apply { if (!exists()) mkdirs() }
-        return File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
-    }
-
-    private fun createVideoFile(): File {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val storageDir = File(cacheDir, "webview_uploads").apply { if (!exists()) mkdirs() }
-        return File.createTempFile("VIDEO_${timeStamp}_", ".mp4", storageDir)
     }
 
     companion object {
