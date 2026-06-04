@@ -24,10 +24,8 @@ import android.util.Log
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.GestureDetector
-import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.widget.PopupMenu
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.ConsoleMessage
@@ -155,68 +153,153 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 长按 WebView 空白区域弹出菜单：刷新 / 清除缓存
-     * 使用 GestureDetector 识别长按，PopupMenu 展示选项
+     * 长按菜单：仅在 WebView 判定为空白区域时触发（hitTestResult 为 UNKNOWN），
+     * 避免覆盖文字选择、链接长按、图片长按等原生行为，粘贴菜单正常工作。
+     * 菜单使用全透明毛玻璃浮层，不显示系统默认白色背景。
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupLongPressMenu() {
+        // 记录按下位置，用于菜单定位
+        var downRawX = 0f
+        var downRawY = 0f
+
         val gestureDetector = GestureDetector(this,
             object : GestureDetector.SimpleOnGestureListener() {
                 override fun onLongPress(e: MotionEvent) {
-                    showWebMenu(e.rawX, e.rawY)
+                    // 只有在空白区域（UNKNOWN / 无链接/文字）才弹自定义菜单
+                    val hit = webView.hitTestResult
+                    val isBlank = hit.type == android.webkit.WebView.HitTestResult.UNKNOWN_TYPE
+                                || hit.type == android.webkit.WebView.HitTestResult.UNKNOWN_TYPE
+                    // 额外排除：有 extra 数据说明命中了可交互元素，不弹菜单
+                    val hasTarget = !hit.extra.isNullOrEmpty()
+                    if (!hasTarget && isBlank) {
+                        showWebMenu(downRawX, downRawY)
+                    }
+                    // 若命中文字/链接/图片，不干预，WebView 自行处理选择/粘贴菜单
                 }
             }
         )
-        webView.setOnTouchListener { v, event ->
+        webView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                downRawX = event.rawX
+                downRawY = event.rawY
+            }
             gestureDetector.onTouchEvent(event)
-            false   // 不消费事件，让 WebView 正常处理滚动/点击
+            false   // 不消费，保留 WebView 所有原生手势
         }
     }
 
+    /**
+     * 全透明浮层菜单，纯代码绘制，无系统白色背景。
+     * 菜单出现在长按位置附近，点击菜单外区域自动关闭。
+     */
     private fun showWebMenu(rawX: Float, rawY: Float) {
-        // 用一个不可见的锚点 View 在触摸位置弹出 PopupMenu
-        val anchor = View(this)
-        anchor.layoutParams = android.widget.FrameLayout.LayoutParams(1, 1)
-        val root = window.decorView as android.widget.FrameLayout
-        root.addView(anchor)
-        anchor.x = rawX
-        anchor.y = rawY
+        val dm = resources.displayMetrics
+        val density = dm.density
 
-        val popup = PopupMenu(this, anchor)
-        popup.menu.add(0, 1, 0, "🔄  刷新页面")
-        popup.menu.add(0, 2, 1, "🗑️  清除所有缓存")
-        popup.setOnMenuItemClickListener { item: MenuItem ->
-            when (item.itemId) {
-                1 -> {
-                    isShowingError = false
-                    failedUrl = null
-                    lastBlockedHint = null
-                    lastConsoleError = null
-                    webView.reload()
+        // ── 样式参数 ──
+        val menuW   = (220 * density).toInt()
+        val itemH   = (52 * density).toInt()
+        val cornerR = (16 * density)
+        val bgColor = 0xCC1C1C1E.toInt()          // 深色半透明，接近 iOS 风格
+        val divColor = 0x33FFFFFF
+        val textColor = 0xFFFFFFFF.toInt()
+        val textSize  = 15 * density
+        val iconSize  = 18 * density
+
+        // ── 根 FrameLayout（全屏拦截点击，点外关闭） ──
+        val root = window.decorView as android.view.ViewGroup
+        val scrim = object : android.widget.FrameLayout(this) {
+            override fun onTouchEvent(event: MotionEvent): Boolean { return true }
+        }
+        scrim.setBackgroundColor(0x00000000)  // 完全透明遮罩
+
+        // ── 菜单卡片（Canvas 自绘圆角） ──
+        val card = object : View(this) {
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            val rect  = android.graphics.RectF()
+            val items = listOf(
+                Pair("🔄", "刷新页面"),
+                Pair("🗑️", "清除所有缓存")
+            )
+
+            override fun onDraw(c: android.graphics.Canvas) {
+                // 背景
+                paint.color = bgColor
+                rect.set(0f, 0f, width.toFloat(), height.toFloat())
+                c.drawRoundRect(rect, cornerR, cornerR, paint)
+
+                // 分割线
+                paint.color = divColor
+                paint.strokeWidth = 1f * density
+                val divY = itemH.toFloat()
+                c.drawLine(16 * density, divY, width - 16 * density, divY, paint)
+
+                // 文字 & emoji
+                paint.color = textColor
+                paint.textSize = textSize
+                paint.typeface = android.graphics.Typeface.DEFAULT
+                items.forEachIndexed { i, (icon, label) ->
+                    val cy = i * itemH + itemH / 2f
+                    // emoji
+                    paint.textSize = iconSize
+                    c.drawText(icon, 18 * density, cy + iconSize * 0.38f, paint)
+                    // label
+                    paint.textSize = textSize
+                    c.drawText(label, 50 * density, cy + textSize * 0.38f, paint)
                 }
-                2 -> {
-                    // 清除 WebView 缓存、Cookie、localStorage、历史
-                    webView.clearCache(true)
-                    webView.clearHistory()
-                    CookieManager.getInstance().removeAllCookies(null)
-                    CookieManager.getInstance().flush()
-                    webView.clearFormData()
-                    // 清除 WebStorage（localStorage / sessionStorage）
-                    android.webkit.WebStorage.getInstance().deleteAllData()
-                    android.widget.Toast.makeText(
-                        this, "缓存已清除，正在刷新…", android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    isShowingError = false
-                    failedUrl = null
-                    lastBlockedHint = null
-                    lastConsoleError = null
-                    webView.reload()
+            }
+        }
+
+        val lp = android.widget.FrameLayout.LayoutParams(menuW, itemH * 2)
+
+        // 定位：在长按点右下方，超出屏幕则往左/上偏移
+        var mx = rawX.toInt()
+        var my = rawY.toInt()
+        if (mx + menuW > dm.widthPixels - 16)  mx = dm.widthPixels - menuW - 16
+        if (my + itemH * 2 > dm.heightPixels - 48) my = my - itemH * 2 - 8
+        lp.leftMargin = mx
+        lp.topMargin  = my
+        card.layoutParams = lp
+
+        // 点击菜单项
+        card.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                val itemIdx = (ev.y / itemH).toInt().coerceIn(0, 1)
+                root.removeView(scrim)
+                when (itemIdx) {
+                    0 -> {
+                        isShowingError = false; failedUrl = null
+                        lastBlockedHint = null; lastConsoleError = null
+                        webView.reload()
+                    }
+                    1 -> {
+                        webView.clearCache(true)
+                        webView.clearHistory()
+                        CookieManager.getInstance().removeAllCookies(null)
+                        CookieManager.getInstance().flush()
+                        webView.clearFormData()
+                        android.webkit.WebStorage.getInstance().deleteAllData()
+                        android.widget.Toast.makeText(
+                            this, "缓存已清除，正在刷新…", android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        isShowingError = false; failedUrl = null
+                        lastBlockedHint = null; lastConsoleError = null
+                        webView.reload()
+                    }
                 }
             }
             true
         }
-        popup.setOnDismissListener { root.removeView(anchor) }
-        popup.show()
+
+        // 点遮罩外区域关闭
+        scrim.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) root.removeView(scrim)
+            true
+        }
+
+        scrim.addView(card)
+        root.addView(scrim)
     }
 
     private fun showBlankPageError(url: String, detail: String) {
