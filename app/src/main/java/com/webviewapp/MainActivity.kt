@@ -274,18 +274,25 @@ class MainActivity : AppCompatActivity() {
                         webView.reload()
                     }
                     1 -> {
-                        webView.clearCache(true)
-                        webView.clearHistory()
-                        CookieManager.getInstance().removeAllCookies(null)
-                        CookieManager.getInstance().flush()
-                        webView.clearFormData()
-                        android.webkit.WebStorage.getInstance().deleteAllData()
-                        android.widget.Toast.makeText(
-                            this, "缓存已清除，正在刷新…", android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                        isShowingError = false; failedUrl = null
-                        lastBlockedHint = null; lastConsoleError = null
-                        webView.reload()
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("清除所有缓存")
+                            .setMessage("确定要清除所有缓存吗？此操作无法撤销。")
+                            .setPositiveButton("确定") { _, _ ->
+                                webView.clearCache(true)
+                                webView.clearHistory()
+                                CookieManager.getInstance().removeAllCookies(null)
+                                CookieManager.getInstance().flush()
+                                webView.clearFormData()
+                                android.webkit.WebStorage.getInstance().deleteAllData()
+                                android.widget.Toast.makeText(
+                                    this, "缓存已清除，正在刷新…", android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                isShowingError = false; failedUrl = null
+                                lastBlockedHint = null; lastConsoleError = null
+                                webView.reload()
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
                     }
                 }
             }
