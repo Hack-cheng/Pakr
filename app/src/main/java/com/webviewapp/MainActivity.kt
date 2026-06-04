@@ -50,7 +50,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webView: RefreshAwareWebView
+    private lateinit var webView: WebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: TopProgressBar
     private lateinit var overlay: View
@@ -146,10 +146,6 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh.setColorSchemeColors(
             android.graphics.Color.parseColor("#6366F1")
         )
-        // Wire the custom WebView to the SwipeRefreshLayout.
-        // RefreshAwareWebView handles all pull-to-refresh gating synchronously
-        // in onTouchEvent — no JS bridge latency, no false triggers mid-scroll.
-        webView.swipeRefreshLayout = swipeRefresh
         swipeRefresh.setOnRefreshListener {
             isShowingError = false
             failedUrl = null
@@ -282,8 +278,6 @@ class MainActivity : AppCompatActivity() {
                     lastBlockedHint = null
                     lastConsoleError = null
                 }
-                // Reset page scroll position for the new page
-                webView.pageScrollY = 0
                 pageVisibleCommitted = false
                 handler.removeCallbacks(renderTimeoutRunnable)
                 handler.postDelayed(renderTimeoutRunnable, 12000)
@@ -294,20 +288,6 @@ class MainActivity : AppCompatActivity() {
                 swipeRefresh.isRefreshing = false
                 handler.removeCallbacks(renderTimeoutRunnable)
                 if (!isShowingError) {
-                    // Inject a scroll listener so we can track page scroll position
-                    // accurately across both native WebView scroll and in-page scroll.
-                    view.evaluateJavascript(
-                        "(function(){" +
-                        "  if(window.__pakrScrollListenerInstalled) return;" +
-                        "  window.__pakrScrollListenerInstalled = true;" +
-                        "  function notifyScroll(){" +
-                        "    var top = Math.round(window.scrollY || document.documentElement.scrollTop || 0);" +
-                        "    if(window.ScrollBridge) ScrollBridge.onScroll(top);" +
-                        "  }" +
-                        "  window.addEventListener('scroll', notifyScroll, {passive:true, capture:true});" +
-                        "  notifyScroll();" +
-                        "})();", null
-                    )
                     view.evaluateJavascript("(function(){try{return document.documentElement.outerHTML.slice(0,4000)}catch(e){return ''}})();") { raw ->
                         val html = raw
                             ?.removePrefix("\"")
@@ -522,16 +502,6 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {}
             }
         }, "ThemeBridge")
-
-        // ScrollBridge: receives page scroll-position updates from JS.
-        // Writes directly into RefreshAwareWebView.pageScrollY so the
-        // synchronous touch handler can read it without any async delay.
-        webView.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun onScroll(scrollY: Int) {
-                webView.pageScrollY = scrollY
-            }
-        }, "ScrollBridge")
 
         // ── NativeBridge：供网页调用的原生功能 ──
         webView.addJavascriptInterface(object {
