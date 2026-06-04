@@ -632,12 +632,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
         // 键盘弹出适配：FLAG_FULLSCREEN 下 adjustResize 失效，手动监听 Insets
-        val rootView = window.decorView.rootView
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootView) { _, insets ->
-            val imeHeight = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
-            val navHeight = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars()).bottom
-            webView.setPadding(0, 0, 0, if (imeHeight > 0) imeHeight - navHeight else 0)
-            insets
+        // 修复：通过调整 swipeRefresh 的 bottomMargin 来避免键盘遮挡输入框
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            val imeInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())
+            val navInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            val imeHeight = imeInsets.bottom
+            val navHeight = navInsets.bottom
+            val bottomOffset = if (imeHeight > navHeight) imeHeight - navHeight else 0
+            val lp = swipeRefresh.layoutParams as? android.widget.FrameLayout.LayoutParams
+            if (lp != null) {
+                lp.bottomMargin = bottomOffset
+                swipeRefresh.layoutParams = lp
+            }
+            androidx.core.view.WindowInsetsCompat.CONSUMED
         }
 
         webView.addJavascriptInterface(object {
