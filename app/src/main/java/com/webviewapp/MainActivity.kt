@@ -50,7 +50,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webView: WebView
+    private lateinit var webView: RefreshAwareWebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: TopProgressBar
     private lateinit var overlay: View
@@ -59,11 +59,6 @@ class MainActivity : AppCompatActivity() {
     private var overlayVisible = false
     private var isFirstLoad = true
     private var pageVisibleCommitted = false
-
-    // Track whether the web page content has been scrolled down.
-    // Updated via a JS scroll listener injected after page load.
-    // Used together with webView.scrollY to reliably gate pull-to-refresh.
-    @Volatile private var webViewScrolledDown = false
 
     private val timeoutRunnable = Runnable { hideOverlay() }
     private val renderTimeoutRunnable = Runnable {
@@ -151,14 +146,10 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh.setColorSchemeColors(
             android.graphics.Color.parseColor("#6366F1")
         )
-        // Fix: only allow pull-to-refresh when WebView is truly at the top.
-        // WebView.canScrollVertically(-1) can be unreliable; we combine it with
-        // a JS scroll-position check cached on every scroll event.
-        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
-            // Returns true  → child can scroll up → block pull-to-refresh
-            // Returns false → child is at top     → allow pull-to-refresh
-            webView.scrollY > 0 || webViewScrolledDown
-        }
+        // Wire the custom WebView to the SwipeRefreshLayout.
+        // RefreshAwareWebView handles all pull-to-refresh gating synchronously
+        // in onTouchEvent — no JS bridge latency, no false triggers mid-scroll.
+        webView.swipeRefreshLayout = swipeRefresh
         swipeRefresh.setOnRefreshListener {
             isShowingError = false
             failedUrl = null
@@ -291,8 +282,8 @@ class MainActivity : AppCompatActivity() {
                     lastBlockedHint = null
                     lastConsoleError = null
                 }
-                // Reset scroll state for the new page so pull-to-refresh starts unblocked
-                webViewScrolledDown = false
+                // Reset page scroll position for the new page
+                webView.pageScrollY = 0
                 pageVisibleCommitted = false
                 handler.removeCallbacks(renderTimeoutRunnable)
                 handler.postDelayed(renderTimeoutRunnable, 12000)
@@ -310,8 +301,8 @@ class MainActivity : AppCompatActivity() {
                         "  if(window.__pakrScrollListenerInstalled) return;" +
                         "  window.__pakrScrollListenerInstalled = true;" +
                         "  function notifyScroll(){" +
-                        "    var top = window.scrollY || document.documentElement.scrollTop || 0;" +
-                        "    if(window.ScrollBridge) ScrollBridge.onScroll(top > 0);" +
+                        "    var top = Math.round(window.scrollY || document.documentElement.scrollTop || 0);" +
+                        "    if(window.ScrollBridge) ScrollBridge.onScroll(top);" +
                         "  }" +
                         "  window.addEventListener('scroll', notifyScroll, {passive:true, capture:true});" +
                         "  notifyScroll();" +
@@ -533,11 +524,12 @@ class MainActivity : AppCompatActivity() {
         }, "ThemeBridge")
 
         // ScrollBridge: receives page scroll-position updates from JS.
-        // Used to accurately gate pull-to-refresh so it only fires at the top of the page.
+        // Writes directly into RefreshAwareWebView.pageScrollY so the
+        // synchronous touch handler can read it without any async delay.
         webView.addJavascriptInterface(object {
             @JavascriptInterface
-            fun onScroll(isScrolledDown: Boolean) {
-                webViewScrolledDown = isScrolledDown
+            fun onScroll(scrollY: Int) {
+                webView.pageScrollY = scrollY
             }
         }, "ScrollBridge")
 
