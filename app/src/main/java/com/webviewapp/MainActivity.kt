@@ -23,6 +23,7 @@ import android.os.Looper
 import android.util.Log
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
@@ -49,6 +50,53 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
+
+    /**
+     * 自定义 WebView：
+     * 1. 水平滑动时禁用父级 SwipeRefreshLayout，防止左右划误触刷新
+     * 2. 重写 canScrollVertically(-1)，让 SwipeRefreshLayout 只在页面真正
+     *    处于顶部时才允许下拉刷新，避免在可上滚页面误触
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    inner class SmartWebView(context: Context) : WebView(context) {
+        private var startX = 0f
+        private var startY = 0f
+        private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.x
+                    startY = event.y
+                    // 按下时先允许父级拦截（后续根据方向决定）
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = Math.abs(event.x - startX)
+                    val dy = Math.abs(event.y - startY)
+                    if (dx > touchSlop || dy > touchSlop) {
+                        if (dx > dy) {
+                            // 水平滑动：完全禁止父级拦截，防止误触刷新
+                            parent?.requestDisallowInterceptTouchEvent(true)
+                        } else {
+                            // 垂直滑动：若页面还能往上滚（不在顶部），禁止刷新
+                            val atTop = !canScrollVertically(-1)
+                            parent?.requestDisallowInterceptTouchEvent(!atTop)
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
+            }
+            return super.onTouchEvent(event)
+        }
+
+        // SwipeRefreshLayout 调用此方法判断是否在顶部；委托给 WebView 内容滚动位置
+        override fun canScrollVertically(direction: Int): Boolean {
+            return super.canScrollVertically(direction)
+        }
+    }
 
     private lateinit var webView: WebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
@@ -139,10 +187,21 @@ class MainActivity : AppCompatActivity() {
             )
         }
         setContentView(R.layout.activity_main)
-        webView     = findViewById(R.id.webView)
-        progressBar = findViewById(R.id.progressBar)
-        overlay     = findViewById(R.id.overlay)
+        progressBar  = findViewById(R.id.progressBar)
+        overlay      = findViewById(R.id.overlay)
         swipeRefresh = findViewById(R.id.swipeRefresh)
+        // 用 SmartWebView 替换布局中的 WebView 占位，解决误触刷新问题
+        val placeholder = findViewById<WebView>(R.id.webView)
+        val wvParent = placeholder.parent as android.view.ViewGroup
+        val wvIndex  = wvParent.indexOfChild(placeholder)
+        val wvLp     = placeholder.layoutParams
+        wvParent.removeView(placeholder)
+        val smart = SmartWebView(this)
+        smart.id  = R.id.webView
+        smart.layoutParams = wvLp
+        wvParent.addView(smart, wvIndex)
+        webView = smart
+
         swipeRefresh.setColorSchemeColors(
             android.graphics.Color.parseColor("#6366F1")
         )
