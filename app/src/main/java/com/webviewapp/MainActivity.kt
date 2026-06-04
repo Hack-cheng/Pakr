@@ -23,6 +23,8 @@ import android.os.Looper
 import android.util.Log
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.content.SharedPreferences
+import android.content.pm.ActivityInfo
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -56,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: TopProgressBar
     private lateinit var overlay: View
+    private lateinit var prefs: SharedPreferences
+    private var isRotationEnabled: Boolean = false
 
     private val handler = Handler(Looper.getMainLooper())
     private var overlayVisible = false
@@ -147,6 +151,10 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh = findViewById(R.id.swipeRefresh)
         // 彻底关闭下拉刷新手势，避免上下/左右滑动误触
         swipeRefresh.isEnabled = false
+        // 初始化旋转设置（默认关闭旋转屏幕）
+        prefs = getSharedPreferences("pakr_prefs", Context.MODE_PRIVATE)
+        isRotationEnabled = prefs.getBoolean("rotation_enabled", false)
+        applyScreenRotation()
         setupLongPressMenu()
         showOverlay()
         setupWebView()
@@ -215,11 +223,14 @@ class MainActivity : AppCompatActivity() {
         scrim.setBackgroundColor(0x00000000)  // 完全透明遮罩
 
         // ── 菜单卡片（Canvas 自绘圆角） ──
+        val rotationLabel = if (isRotationEnabled) "关闭旋转屏幕" else "开启旋转屏幕"
+        val rotationIcon  = if (isRotationEnabled) "🔒" else "🔓"
         val card = object : View(this) {
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             val rect  = android.graphics.RectF()
             val items = listOf(
                 Pair("🔄", "刷新页面"),
+                Pair(rotationIcon, rotationLabel),
                 Pair("🗑️", "清除所有缓存")
             )
 
@@ -232,8 +243,8 @@ class MainActivity : AppCompatActivity() {
                 // 分割线
                 paint.color = divColor
                 paint.strokeWidth = 1f * density
-                val divY = itemH.toFloat()
-                c.drawLine(16 * density, divY, width - 16 * density, divY, paint)
+                c.drawLine(16 * density, itemH.toFloat(), width - 16 * density, itemH.toFloat(), paint)
+                c.drawLine(16 * density, itemH * 2f, width - 16 * density, itemH * 2f, paint)
 
                 // 文字 & emoji
                 paint.color = textColor
@@ -251,13 +262,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val lp = android.widget.FrameLayout.LayoutParams(menuW, itemH * 2)
+        val lp = android.widget.FrameLayout.LayoutParams(menuW, itemH * 3)
 
         // 定位：在长按点右下方，超出屏幕则往左/上偏移
         var mx = rawX.toInt()
         var my = rawY.toInt()
         if (mx + menuW > dm.widthPixels - 16)  mx = dm.widthPixels - menuW - 16
-        if (my + itemH * 2 > dm.heightPixels - 48) my = my - itemH * 2 - 8
+        if (my + itemH * 3 > dm.heightPixels - 48) my = my - itemH * 3 - 8
         lp.leftMargin = mx
         lp.topMargin  = my
         card.layoutParams = lp
@@ -265,7 +276,7 @@ class MainActivity : AppCompatActivity() {
         // 点击菜单项
         card.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_UP) {
-                val itemIdx = (ev.y / itemH).toInt().coerceIn(0, 1)
+                val itemIdx = (ev.y / itemH).toInt().coerceIn(0, 2)
                 root.removeView(scrim)
                 when (itemIdx) {
                     0 -> {
@@ -274,6 +285,13 @@ class MainActivity : AppCompatActivity() {
                         webView.reload()
                     }
                     1 -> {
+                        isRotationEnabled = !isRotationEnabled
+                        prefs.edit().putBoolean("rotation_enabled", isRotationEnabled).apply()
+                        applyScreenRotation()
+                        val msg = if (isRotationEnabled) "已开启旋转屏幕" else "已关闭旋转屏幕"
+                        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    2 -> {
                         android.app.AlertDialog.Builder(this)
                             .setTitle("清除所有缓存")
                             .setMessage("确定要清除所有缓存吗？此操作无法撤销。")
@@ -307,6 +325,17 @@ class MainActivity : AppCompatActivity() {
 
         scrim.addView(card)
         root.addView(scrim)
+    }
+
+    /**
+     * 应用屏幕旋转设置
+     */
+    private fun applyScreenRotation() {
+        requestedOrientation = if (isRotationEnabled) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
     }
 
     private fun showBlankPageError(url: String, detail: String) {
