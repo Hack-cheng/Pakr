@@ -284,7 +284,7 @@ function gh(env, path, opts = {}) {
   return fetch(`https://api.github.com${path}`, {
     ...opts,
     headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      Authorization: `Bearer ${env.GH_PAT}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'APK-Builder-CF-Worker/1.0',
