@@ -23,8 +23,11 @@ import android.os.Looper
 import android.util.Log
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.GestureDetector
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.widget.PopupMenu
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.ConsoleMessage
@@ -50,53 +53,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
-
-    /**
-     * 自定义 WebView：
-     * 1. 水平滑动时禁用父级 SwipeRefreshLayout，防止左右划误触刷新
-     * 2. 重写 canScrollVertically(-1)，让 SwipeRefreshLayout 只在页面真正
-     *    处于顶部时才允许下拉刷新，避免在可上滚页面误触
-     */
-    @SuppressLint("ClickableViewAccessibility")
-    inner class SmartWebView(context: Context) : WebView(context) {
-        private var startX = 0f
-        private var startY = 0f
-        private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
-
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.x
-                    startY = event.y
-                    // 按下时先允许父级拦截（后续根据方向决定）
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = Math.abs(event.x - startX)
-                    val dy = Math.abs(event.y - startY)
-                    if (dx > touchSlop || dy > touchSlop) {
-                        if (dx > dy) {
-                            // 水平滑动：完全禁止父级拦截，防止误触刷新
-                            parent?.requestDisallowInterceptTouchEvent(true)
-                        } else {
-                            // 垂直滑动：若页面还能往上滚（不在顶部），禁止刷新
-                            val atTop = !canScrollVertically(-1)
-                            parent?.requestDisallowInterceptTouchEvent(!atTop)
-                        }
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                }
-            }
-            return super.onTouchEvent(event)
-        }
-
-        // SwipeRefreshLayout 调用此方法判断是否在顶部；委托给 WebView 内容滚动位置
-        override fun canScrollVertically(direction: Int): Boolean {
-            return super.canScrollVertically(direction)
-        }
-    }
 
     private lateinit var webView: WebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
@@ -187,31 +143,80 @@ class MainActivity : AppCompatActivity() {
             )
         }
         setContentView(R.layout.activity_main)
-        progressBar  = findViewById(R.id.progressBar)
-        overlay      = findViewById(R.id.overlay)
+        webView     = findViewById(R.id.webView)
+        progressBar = findViewById(R.id.progressBar)
+        overlay     = findViewById(R.id.overlay)
         swipeRefresh = findViewById(R.id.swipeRefresh)
-        // 用 SmartWebView 替换布局中的 WebView 占位，解决误触刷新问题
-        val placeholder = findViewById<WebView>(R.id.webView)
-        val wvParent = placeholder.parent as android.view.ViewGroup
-        val wvIndex  = wvParent.indexOfChild(placeholder)
-        val wvLp     = placeholder.layoutParams
-        wvParent.removeView(placeholder)
-        val smart = SmartWebView(this)
-        smart.id  = R.id.webView
-        smart.layoutParams = wvLp
-        wvParent.addView(smart, wvIndex)
-        webView = smart
-
-        swipeRefresh.setColorSchemeColors(
-            android.graphics.Color.parseColor("#6366F1")
-        )
-        swipeRefresh.setOnRefreshListener {
-            isShowingError = false
-            failedUrl = null
-            webView.reload()
-        }
+        // 彻底关闭下拉刷新手势，避免上下/左右滑动误触
+        swipeRefresh.isEnabled = false
+        setupLongPressMenu()
         showOverlay()
         setupWebView()
+    }
+
+    /**
+     * 长按 WebView 空白区域弹出菜单：刷新 / 清除缓存
+     * 使用 GestureDetector 识别长按，PopupMenu 展示选项
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupLongPressMenu() {
+        val gestureDetector = GestureDetector(this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onLongPress(e: MotionEvent) {
+                    showWebMenu(e.rawX, e.rawY)
+                }
+            }
+        )
+        webView.setOnTouchListener { v, event ->
+            gestureDetector.onTouchEvent(event)
+            false   // 不消费事件，让 WebView 正常处理滚动/点击
+        }
+    }
+
+    private fun showWebMenu(rawX: Float, rawY: Float) {
+        // 用一个不可见的锚点 View 在触摸位置弹出 PopupMenu
+        val anchor = View(this)
+        anchor.layoutParams = android.widget.FrameLayout.LayoutParams(1, 1)
+        val root = window.decorView as android.widget.FrameLayout
+        root.addView(anchor)
+        anchor.x = rawX
+        anchor.y = rawY
+
+        val popup = PopupMenu(this, anchor)
+        popup.menu.add(0, 1, 0, "🔄  刷新页面")
+        popup.menu.add(0, 2, 1, "🗑️  清除所有缓存")
+        popup.setOnMenuItemClickListener { item: MenuItem ->
+            when (item.itemId) {
+                1 -> {
+                    isShowingError = false
+                    failedUrl = null
+                    lastBlockedHint = null
+                    lastConsoleError = null
+                    webView.reload()
+                }
+                2 -> {
+                    // 清除 WebView 缓存、Cookie、localStorage、历史
+                    webView.clearCache(true)
+                    webView.clearHistory()
+                    CookieManager.getInstance().removeAllCookies(null)
+                    CookieManager.getInstance().flush()
+                    webView.clearFormData()
+                    // 清除 WebStorage（localStorage / sessionStorage）
+                    android.webkit.WebStorage.getInstance().deleteAllData()
+                    android.widget.Toast.makeText(
+                        this, "缓存已清除，正在刷新…", android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    isShowingError = false
+                    failedUrl = null
+                    lastBlockedHint = null
+                    lastConsoleError = null
+                    webView.reload()
+                }
+            }
+            true
+        }
+        popup.setOnDismissListener { root.removeView(anchor) }
+        popup.show()
     }
 
     private fun showBlankPageError(url: String, detail: String) {
