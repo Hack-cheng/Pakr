@@ -9,7 +9,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
-body{font-family:'Inter',system-ui,sans-serif;background:#fff;color:#111;line-height:1.6}
+body{font-family:'Inter',system-ui,sans-serif;background:#fff;color:#111;line-height:1.6;min-height:100vh;display:flex;flex-direction:column}
 
 /* ── Nav ── */
 nav{
@@ -70,7 +70,7 @@ nav{
 
 
 /* ── Main Content ── */
-.content{max-width:520px;margin:0 auto;padding:0 24px 80px}
+.content{max-width:520px;width:100%;margin:0 auto;padding:32px 24px 40px;flex:1}
 
 
 /* ── Form Card ── */
@@ -249,8 +249,8 @@ input.err{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,0.08)}
 
 /* ── Footer ── */
 footer{
-  border-top:1px solid #f0f0f0;
-  padding:24px;text-align:center;
+  border-top:none;
+  padding:8px 24px;text-align:center;
   font-size:12px;color:#aaa;
 }
 footer span{margin:0 8px;opacity:.4}
@@ -361,7 +361,7 @@ footer span{margin:0 8px;opacity:.4}
 
 /* ── Toggle Switch ── */
 .toggle-row{display:flex;align-items:center;justify-content:space-between;
-  padding:12px 0;border-top:1px solid #f0f0f0;margin-top:4px}
+  padding:12px 0;border-top:none;margin-top:4px}
 .toggle-label{font-size:13px;font-weight:500;color:#333}
 .toggle-desc{font-size:11px;color:#aaa;margin-top:1px}
 .toggle-switch{position:relative;width:40px;height:22px;flex-shrink:0}
@@ -485,7 +485,7 @@ input::placeholder{color:var(--faint)}
 .dl-trigger{color:var(--text)}
 .dl-badge{background:var(--surface2);color:var(--muted)}
 .log-stream{background:var(--surface);border-color:var(--border2);color:var(--muted)}
-footer{border-top-color:var(--border);color:var(--faint)}
+footer{border-top:none;color:var(--faint)}
 .perm-item{background:var(--surface);border-color:var(--border2);color:var(--muted)}
 .toggle-track{background:var(--surface2)}
 [data-theme="dark"] input:-webkit-autofill,
