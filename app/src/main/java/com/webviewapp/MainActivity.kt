@@ -161,7 +161,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun inspectBlankPage(view: WebView, url: String) {
         if (isShowingError) return
-        view.postVisualStateCallback(System.currentTimeMillis(), WebView.VisualStateCallback { _ ->
+        view.postVisualStateCallback(System.currentTimeMillis(), object : WebView.VisualStateCallback() {
+            override fun onComplete(requestId: Long) {
             view.evaluateJavascript(
                 "(function(){" +
                 "try{" +
@@ -180,6 +181,7 @@ class MainActivity : AppCompatActivity() {
                     val detail = jsError ?: "页面内容为空或未渲染完成"
                     showBlankPageError(url, detail)
                 }
+            }
             }
         })
     }
