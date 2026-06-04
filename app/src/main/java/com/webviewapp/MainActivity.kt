@@ -594,6 +594,40 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
+            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                if (customView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                customView = view
+                customViewCallback = callback
+                val decorView = window.decorView as android.view.ViewGroup
+                decorView.addView(
+                    view,
+                    android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                val controller = WindowInsetsControllerCompat(window, window.decorView)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+
+            override fun onHideCustomView() {
+                val view = customView ?: return
+                val decorView = window.decorView as android.view.ViewGroup
+                decorView.removeView(view)
+                customView = null
+                customViewCallback?.onCustomViewHidden()
+                customViewCallback = null
+                val controller = WindowInsetsControllerCompat(window, window.decorView)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+
             override fun onShowFileChooser(
                 webView: WebView,
                 filePathCallback: ValueCallback<Array<Uri>>,
@@ -797,9 +831,18 @@ class MainActivity : AppCompatActivity() {
             "</body></html>"
     }
 
+    // 视频全屏支持
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private var originalSystemUiVisibility = 0
+
     private var backPressedTime = 0L
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (customView != null) {
+            webView.webChromeClient?.onHideCustomView()
+            return
+        }
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
