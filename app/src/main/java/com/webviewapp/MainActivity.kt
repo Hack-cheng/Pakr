@@ -161,7 +161,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun inspectBlankPage(view: WebView, url: String) {
         if (isShowingError) return
-        view.postVisualStateCallback(System.currentTimeMillis()) { _ ->
+        view.postVisualStateCallback(System.currentTimeMillis(), WebView.VisualStateCallback { _ ->
             view.evaluateJavascript(
                 "(function(){" +
                 "try{" +
@@ -181,7 +181,7 @@ class MainActivity : AppCompatActivity() {
                     showBlankPageError(url, detail)
                 }
             }
-        }
+        })
     }
 
     private fun showBlockedBySitePage(url: String, reason: String) {
